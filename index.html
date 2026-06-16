@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koło uczuć</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f4f1ea;
+      font-family: system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    .wheel-wrapper {
+      position: relative;
+      width: min(100vmin, 100vw);
+      height: min(100vmin, 100vh);
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+      touch-action: none;
+    }
+
+    #wheelGroup {
+      cursor: grab;
+    }
+
+    #wheelGroup.dragging {
+      cursor: grabbing;
+    }
+
+    .seg {
+      stroke: #2b2b2b;
+      stroke-width: 1;
+      stroke-linejoin: round;
+    }
+
+    text {
+      fill: #1d1d1d;
+      font-family: "Comic Sans MS", system-ui, sans-serif;
+      font-weight: 700;
+      user-select: none;
+      pointer-events: none;
+    }
+
+    #readout {
+      position: fixed;
+      left: 50%;
+      bottom: max(16px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      max-width: min(92vw, 640px);
+      padding: 12px 20px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+      border-left: 10px solid #999;
+      font-weight: 700;
+      line-height: 1.25;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    #readout.show {
+      opacity: 1;
+    }
+
+    #readout .path {
+      font-size: clamp(12px, 3.2vw, 16px);
+      color: #555;
+    }
+
+    #readout .term {
+      font-size: clamp(22px, 7vw, 38px);
+      color: #1d1d1d;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wheel-wrapper">
+    <svg id="wheel" viewBox="0 0 1000 1000">
+      <g id="wheelGroup"></g>
+    </svg>
+  </div>
+  <div id="readout">
+    <div class="path"></div>
+    <div class="term"></div>
+  </div>
+
+  <script>
+                  // Each core: { core, color, mids: [ { name, outer: [a, b] } ] }
+                  // Order is clockwise starting from the top.
+                  // Polish translation of Kaitlin Robbs emotion wheel
+                  const WHEEL = [
+                    {
+                      core: "SŁABY", color: "#8fce9f", mids: [
+                        { name: "ZESTRESOWANY", outer: ["PRZYTŁOCZONY", "TRACĄCY KONTROLĘ"] },
+                        { name: "ZAPRACOWANY", outer: ["POŚPIESZANY", "POD PRESJĄ"] },
+                        { name: "ZNUDZONY", outer: ["APATYCZNY", "OBOJĘTNY"] },
+                        { name: "ZMĘCZONY", outer: ["SENNY", "ROZKOJARZONY"] },
+                      ]
+                    },
+                    {
+                      core: "LĘKLIWY", color: "#e6d27f", mids: [
+                        { name: "PRZESTRASZONY", outer: ["BEZSILNY", "ZASTRASZONY"] },
+                        { name: "NIESPOKOJNY", outer: ["PRZYTŁOCZONY", "ZMARTWIONY"] },
+                        { name: "NIEPEWNY", outer: ["NIEWYSTARCZAJĄCY", "PODRZĘDNY"] },
+                        { name: "ULEGŁY", outer: ["BEZWARTOŚCIOWY", "NIEISTOTNY"] },
+                        { name: "ODRZUCONY", outer: ["WYOBCOWANY", "NIEPASUJĄCY"] },
+                        { name: "ZASTRASZONY", outer: ["NERWOWY", "ZDEMASKOWANY"] },
+                      ]
+                    },
+                    {
+                      core: "ROZGNIEWANY", color: "#ec9aa6", mids: [
+                        { name: "ROZCZAROWANY", outer: ["ZDRADZONY", "URAŻONY"] },
+                        { name: "UPOKORZONY", outer: ["ZLEKCEWAŻONY", "OŚMIESZONY"] },
+                        { name: "NIENAWISTNY", outer: ["ZGORSZONY", "ZBEZCZESZCZONY"] },
+                        { name: "ZAGROŻONY", outer: ["NIEPEWNY", "ZAZDROSNY"] },
+                        { name: "AGRESYWNY", outer: ["WROGO NASTAWIONY", "SPROWOKOWANY"] },
+                        { name: "SFRUSTROWANY", outer: ["OBURZONY", "POIRYTOWANY"] },
+                        { name: "ZDYSTANSOWANY", outer: ["ZAMKNIĘTY W SOBIE", "PODEJRZLIWY"] },
+                        { name: "KRYTYCZNY", outer: ["SCEPTYCZNY", "SARKASTYCZNY"] },
+                      ]
+                    },
+                    {
+                      core: "ZNIESMACZONY", color: "#b9bfba", mids: [
+                        { name: "NIEPRZYCHYLNY", outer: ["NIECHĘTNY", "KRYTYKANCKI"] },
+                        { name: "ROZCZAROWANY", outer: ["ZBUNTOWANY", "ANTYPATYCZNY"] },
+                        { name: "CZUJĄCY SIĘ PODLE", outer: ["PODBURZONY", "OBRZYDZONY"] },
+                        { name: "STRONIĄCY", outer: ["CZUJĄCY ODRAZĘ", "NIEPEWNY"] },
+                      ]
+                    },
+                    {
+                      core: "SMUTNY", color: "#8fb6e0", mids: [
+                        { name: "SAMOTNY", outer: ["ODIZOLOWANY", "PORZUCONY"] },
+                        { name: "ZRANIONY", outer: ["PRZEŚLADOWANY", "SŁABOWITY"] },
+                        { name: "ZROZPACZONY", outer: ["W BÓLU, W ŻAŁOBIE", "BEZSILNY"] },
+                        { name: "WINNY", outer: ["ZAWSTYDZONY", "SKRUSZONY"] },
+                        { name: "PRZYGNĘBIONY", outer: ["WYCZERPANY", "GORSZY OD INNYCH"] },
+                        { name: "ZRANIONY", outer: ["ROZCZAROWANY", "ZLEKCEWAŻONY"] },
+                      ]
+                    },
+                    {
+                      core: "SZCZĘŚLIWY", color: "#f0e07a", mids: [
+                        { name: "OPTYMISTYCZNY", outer: ["PEŁEN NADZIEI", "ZAINSPIROWANY"] },
+                        { name: "CZUJĄCY BLISKOŚĆ", outer: ["CZUŁY", "FIGLARNY"] },
+                        { name: "SPOKOJNY", outer: ["KOCHAJĄCY", "WDZIĘCZNY"] },
+                        { name: "PEŁEN SIŁY", outer: ["ODWAŻNY", "KREATYWNY"] },
+                        { name: "AKCEPTOWANY", outer: ["SZANOWANY", "DOCENIONY"] },
+                        { name: "DUMNY", outer: ["WAŻNY", "PEWNY SIEBIE"] },
+                        { name: "ZAINTERESOWANY", outer: ["ZACIEKAWIONY", "DOCIEKLIWY"] },
+                        { name: "ZADOWOLONY", outer: ["WOLNY", "WESOŁY"] },
+                        { name: "ŻARTOBLIWY", outer: ["ZUCHWAŁY", "POBUDZONY"] },
+                      ]
+                    },
+                    {
+                      core: "ZASKOCZONY", color: "#c3a6e0", mids: [
+                        { name: "PODEKSCYTOWANY", outer: ["OCHOCZY", "ENERGICZNY"] },
+                        { name: "ZDUMIONY", outer: ["ZATRWOŻONY", "ZADZIWIONY"] },
+                        { name: "ZMIESZANY", outer: ["ZAKŁOPOTANY", "ROZCZAROWANY"] },
+                        { name: "PRZESTRASZONY", outer: ["WSTRZĄŚNIĘTY", "SKONSTERNOWANY"] },
+                      ]
+                    },
+                  ];
+
+                  const SVGNS = "http://www.w3.org/2000/svg";
+                  const CX = 500, CY = 500;
+                  const R_CORE = 50, R_MID = 200, R_OUTER = 340, R_EDGE = 492;
+
+                  const group = document.getElementById("wheelGroup");
+                  const labels = []; // { el, angle, x, y }
+
+                  function lighten(hex, amt) {
+                    const n = parseInt(hex.slice(1), 16);
+                    let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+                    r = Math.round(r + (255 - r) * amt);
+                    g = Math.round(g + (255 - g) * amt);
+                    b = Math.round(b + (255 - b) * amt);
+                    return `rgb(${r},${g},${b})`;
+                  }
+
+                  function polar(r, aDeg) {
+                    const a = aDeg * Math.PI / 180;
+                    return [CX + r * Math.cos(a), CY + r * Math.sin(a)];
+                  }
+
+                  function sectorPath(r0, r1, a0, a1) {
+                    const large = (a1 - a0) > 180 ? 1 : 0;
+                    const [x0, y0] = polar(r1, a0);
+                    const [x1, y1] = polar(r1, a1);
+                    const [x2, y2] = polar(r0, a1);
+                    const [x3, y3] = polar(r0, a0);
+                    return `M${x0} ${y0}A${r1} ${r1} 0 ${large} 1 ${x1} ${y1}` +
+                      `L${x2} ${y2}A${r0} ${r0} 0 ${large} 0 ${x3} ${y3}Z`;
+                  }
+
+                    function addSegment(r0, r1, a0, a1, fill, term, path, accent) {
+                    const p = document.createElementNS(SVGNS, "path");
+                    p.setAttribute("class", "seg");
+                    p.setAttribute("d", sectorPath(r0, r1, a0, a1));
+                    p.setAttribute("fill", fill);
+                    p.dataset.term = term;
+                    p.dataset.path = path;
+                    p.dataset.accent = accent;
+                    group.appendChild(p);
+    }
+
+                  function addLabel(text, r0, r1, a0, a1, fontSize) {
+                    const mid = (a0 + a1) / 2;
+                    const rr = (r0 + r1) / 2;
+                    const [x, y] = polar(rr, mid);
+                    const t = document.createElementNS(SVGNS, "text");
+                    t.setAttribute("x", x);
+                    t.setAttribute("y", y);
+                    t.setAttribute("text-anchor", "middle");
+                    t.setAttribute("dominant-baseline", "middle");
+                    t.setAttribute("font-size", fontSize);
+                    t.textContent = text;
+                    group.appendChild(t);
+                    labels.push({ el: t, angle: mid, x, y });
+    }
+
+                  // Total angular units = number of outer cells (each mid = 2 outer cells).
+                  let totalUnits = 0;
+                  WHEEL.forEach(c => totalUnits += c.mids.length * 2);
+                  const unit = 360 / totalUnits; // degrees per outer cell
+
+                  let a = -90 - (WHEEL[0].mids.length * 2 * unit) / 2; // center first core on top
+                  WHEEL.forEach(core => {
+                    const coreUnits = core.mids.length * 2;
+                    const coreStart = a;
+                    const coreEnd = a + coreUnits * unit;
+
+                    addSegment(R_CORE, R_MID, coreStart, coreEnd, core.color, core.core, "", core.color);
+                    addLabel(core.core, R_CORE, R_MID, coreStart, coreEnd, 15);
+
+                    core.mids.forEach(mid => {
+                      const midStart = a;
+                      const midEnd = a + 2 * unit;
+                      addSegment(R_MID, R_OUTER, midStart, midEnd, lighten(core.color, 0.35), mid.name, core.core, core.color);
+                      addLabel(mid.name, R_MID, R_OUTER, midStart, midEnd, 11);
+
+                      // Two outer cells.
+                      const o0s = a, o0e = a + unit, o1s = a + unit, o1e = a + 2 * unit;
+                      addSegment(R_OUTER, R_EDGE, o0s, o0e, lighten(core.color, 0.62), mid.outer[0], core.core + " › " + mid.name, core.color);
+                      addLabel(mid.outer[0], R_OUTER, R_EDGE, o0s, o0e, 9);
+                      addSegment(R_OUTER, R_EDGE, o1s, o1e, lighten(core.color, 0.62), mid.outer[1], core.core + " › " + mid.name, core.color);
+                      addLabel(mid.outer[1], R_OUTER, R_EDGE, o1s, o1e, 9);
+
+                      a += 2 * unit;
+                    });
+                  });
+
+                  let rotation = 0;
+
+                  function norm(deg) {
+                    return ((deg % 360) + 360) % 360;
+                  }
+
+                  // Keep every label upright (never upside-down) given the current rotation.
+                  function updateLabels() {
+                    for (const L of labels) {
+                      const screenAngle = norm(L.angle + rotation);
+                      const flip = (screenAngle > 90 && screenAngle < 270) ? 180 : 0;
+                      L.el.setAttribute(
+                        "transform",
+                        `rotate(${L.angle + flip} ${L.x} ${L.y})`
+                      );
+                    }
+      }
+
+  function applyRotation() {
+    group.setAttribute("transform", `rotate(${rotation} ${CX} ${CY})`);
+    updateLabels();
+  }
+
+                  applyRotation();
+
+                  // Drag to spin.
+                  const svg = document.getElementById("wheel");
+                    const readout = document.getElementById("readout");
+                    const readoutPath = readout.querySelector(".path");
+                    const readoutTerm = readout.querySelector(".term");
+                  let dragging = false;
+                  let startPointerAngle = 0;
+                  let startRotation = 0;
+                    let downX = 0, downY = 0, moved = 0;
+
+                    function showReadout(seg) {
+                      readoutTerm.textContent = seg.dataset.term;
+                      readoutPath.textContent = seg.dataset.path || "";
+                      readout.style.borderLeftColor = seg.dataset.accent || "#999";
+                      readout.classList.add("show");
+                    }
+
+                  function pointerAngle(event) {
+                    const rect = svg.getBoundingClientRect();
+                    const cx = rect.left + rect.width / 2;
+                    const cy = rect.top + rect.height / 2;
+                  return Math.atan2(event.clientY - cy, event.clientX - cx) * 180 / Math.PI;
+                }
+
+                  function onDown(event) {
+                    dragging = true;
+                  startPointerAngle = pointerAngle(event);
+                  startRotation = rotation;
+                    downX = event.clientX;
+                    downY = event.clientY;
+                    moved = 0;
+                  group.classList.add("dragging");
+                  svg.setPointerCapture(event.pointerId);
+                }
+
+                  function onMove(event) {
+                    if (!dragging) return;
+                    moved = Math.max(moved, Math.hypot(event.clientX - downX, event.clientY - downY));
+                  rotation = startRotation + (pointerAngle(event) - startPointerAngle);
+                  applyRotation();
+                }
+
+                  function onUp(event) {
+      if (!dragging) return;
+      dragging = false;
+                  group.classList.remove("dragging");
+                  svg.releasePointerCapture(event.pointerId);
+                    if (moved < 8) {
+                      const el = document.elementFromPoint(event.clientX, event.clientY);
+                      if (el && el.classList.contains("seg")) showReadout(el);
+                    }
+    }
+
+                  svg.addEventListener("pointerdown", onDown);
+                  svg.addEventListener("pointermove", onMove);
+                  svg.addEventListener("pointerup", onUp);
+                  svg.addEventListener("pointercancel", onUp);
+  </script>
+</body>
+</html>
